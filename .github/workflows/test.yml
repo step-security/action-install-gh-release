@@ -133,7 +133,7 @@ jobs:
       - if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libtcmalloc-minimal4
+          sudo apt-get install -y libgoogle-perftools4
       - uses: actions/checkout@v5
       - run: npm ci
       - run: npm run build
