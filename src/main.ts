@@ -15,6 +15,23 @@ import axios, {isAxiosError} from 'axios'
 const ThrottlingOctokit = Octokit.plugin(throttling) as typeof Octokit;
 const SUPPORTED_TAR_EXTENSIONS = [".tar.gz", ".tar.xz", ".tar.bz2", ".tgz"];
 
+// Add path validation
+function validatePath(inputPath: string): string {
+    const normalized = path.normalize(inputPath);
+    if (normalized.includes('..') || path.isAbsolute(normalized)) {
+        throw new Error('Invalid path: path traversal detected');
+    }
+    return normalized;
+}
+
+// Validate chmod format
+function validateChmod(chmod: string): string {
+    if (!/^[0-7]{3,4}$/.test(chmod)) {
+        throw new Error('Invalid chmod format');
+    }
+    return chmod;
+}
+
 interface ToolInfo {
     owner: string;
     assetName: string;
@@ -134,6 +151,7 @@ async function run() {
         }
         let chmodTo = core.getInput("chmod");
         if (chmodTo !== "") {
+            chmodTo = validateChmod(chmodTo);
             core.info(`==> Will chmod downloaded release asset to ${chmodTo}`);
         }
         let toolInfo: ToolInfo = {
@@ -148,6 +166,7 @@ async function run() {
         let binariesLocation = core.getInput("binaries-location");
         let finalBinLocation = dest;
         if (binariesLocation !== "") {
+            binariesLocation = validatePath(binariesLocation);
             core.info(`==> Given bin location: ${binariesLocation}`);
             finalBinLocation = path.join(dest, binariesLocation);
         }
@@ -274,6 +293,9 @@ async function run() {
             core.info(`Release asset ${asset.name} did not have a recognised file extension, unable to automatically extract it`);
             try {
                 fs.mkdirSync(dest, { recursive: true });
+                if (renameTo !== "") {
+                    renameTo = validatePath(renameTo);
+                }
                 const outputPath = path.join(dest, renameTo !== "" ? renameTo : path.basename(binPath));
                 core.info(`Created output directory ${dest}`);
                 let moveFailed = false;

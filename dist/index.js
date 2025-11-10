@@ -99694,6 +99694,21 @@ const { escapeRegExp } = lodash__WEBPACK_IMPORTED_MODULE_2__;
 
 const ThrottlingOctokit = _octokit_rest__WEBPACK_IMPORTED_MODULE_7__/* .Octokit */ .E.plugin(_octokit_plugin_throttling__WEBPACK_IMPORTED_MODULE_8__/* .throttling */ .A);
 const SUPPORTED_TAR_EXTENSIONS = [".tar.gz", ".tar.xz", ".tar.bz2", ".tgz"];
+// Add path validation
+function validatePath(inputPath) {
+    const normalized = path__WEBPACK_IMPORTED_MODULE_1__.normalize(inputPath);
+    if (normalized.includes('..') || path__WEBPACK_IMPORTED_MODULE_1__.isAbsolute(normalized)) {
+        throw new Error('Invalid path: path traversal detected');
+    }
+    return normalized;
+}
+// Validate chmod format
+function validateChmod(chmod) {
+    if (!/^[0-7]{3,4}$/.test(chmod)) {
+        throw new Error('Invalid chmod format');
+    }
+    return chmod;
+}
 async function validateSubscription() {
     const API_URL = `https://agent.api.stepsecurity.io/v1/github/${process.env.GITHUB_REPOSITORY}/actions/subscription`;
     try {
@@ -99805,6 +99820,7 @@ async function run() {
         }
         let chmodTo = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("chmod");
         if (chmodTo !== "") {
+            chmodTo = validateChmod(chmodTo);
             _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Will chmod downloaded release asset to ${chmodTo}`);
         }
         let toolInfo = {
@@ -99819,6 +99835,7 @@ async function run() {
         let binariesLocation = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("binaries-location");
         let finalBinLocation = dest;
         if (binariesLocation !== "") {
+            binariesLocation = validatePath(binariesLocation);
             _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Given bin location: ${binariesLocation}`);
             finalBinLocation = path__WEBPACK_IMPORTED_MODULE_1__.join(dest, binariesLocation);
         }
@@ -99965,6 +99982,9 @@ async function run() {
             _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Release asset ${asset.name} did not have a recognised file extension, unable to automatically extract it`);
             try {
                 fs__WEBPACK_IMPORTED_MODULE_3__.mkdirSync(dest, { recursive: true });
+                if (renameTo !== "") {
+                    renameTo = validatePath(renameTo);
+                }
                 const outputPath = path__WEBPACK_IMPORTED_MODULE_1__.join(dest, renameTo !== "" ? renameTo : path__WEBPACK_IMPORTED_MODULE_1__.basename(binPath));
                 _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Created output directory ${dest}`);
                 let moveFailed = false;
