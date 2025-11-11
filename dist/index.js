@@ -41412,7 +41412,7 @@ function expand(str, isTop) {
   var isOptions = m.body.indexOf(',') >= 0;
   if (!isSequence && !isOptions) {
     // {a},b}
-    if (m.post.match(/,.*\}/)) {
+    if (m.post.match(/,(?!,).*\}/)) {
       str = m.pre + '{' + m.body + escClose + m.post;
       return expand(str);
     }
@@ -71423,7 +71423,7 @@ module.exports = {
 
 
 const { parseSetCookie } = __nccwpck_require__(8915)
-const { stringify, getHeadersList } = __nccwpck_require__(3834)
+const { stringify } = __nccwpck_require__(3834)
 const { webidl } = __nccwpck_require__(4222)
 const { Headers } = __nccwpck_require__(6349)
 
@@ -71499,14 +71499,13 @@ function getSetCookies (headers) {
 
   webidl.brandCheck(headers, Headers, { strict: false })
 
-  const cookies = getHeadersList(headers).cookies
+  const cookies = headers.getSetCookie()
 
   if (!cookies) {
     return []
   }
 
-  // In older versions of undici, cookies is a list of name:value.
-  return cookies.map((pair) => parseSetCookie(Array.isArray(pair) ? pair[1] : pair))
+  return cookies.map((pair) => parseSetCookie(pair))
 }
 
 /**
@@ -71933,13 +71932,14 @@ module.exports = {
 /***/ }),
 
 /***/ 3834:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+/***/ ((module) => {
 
 
 
-const assert = __nccwpck_require__(2613)
-const { kHeadersList } = __nccwpck_require__(6443)
-
+/**
+ * @param {string} value
+ * @returns {boolean}
+ */
 function isCTLExcludingHtab (value) {
   if (value.length === 0) {
     return false
@@ -72200,31 +72200,13 @@ function stringify (cookie) {
   return out.join('; ')
 }
 
-let kHeadersListNode
-
-function getHeadersList (headers) {
-  if (headers[kHeadersList]) {
-    return headers[kHeadersList]
-  }
-
-  if (!kHeadersListNode) {
-    kHeadersListNode = Object.getOwnPropertySymbols(headers).find(
-      (symbol) => symbol.description === 'headers list'
-    )
-
-    assert(kHeadersListNode, 'Headers cannot be parsed')
-  }
-
-  const headersList = headers[kHeadersListNode]
-  assert(headersList)
-
-  return headersList
-}
-
 module.exports = {
   isCTLExcludingHtab,
-  stringify,
-  getHeadersList
+  validateCookieName,
+  validateCookiePath,
+  validateCookieValue,
+  toIMFDate,
+  stringify
 }
 
 
@@ -76215,6 +76197,7 @@ const {
   isValidHeaderName,
   isValidHeaderValue
 } = __nccwpck_require__(5523)
+const util = __nccwpck_require__(9023)
 const { webidl } = __nccwpck_require__(4222)
 const assert = __nccwpck_require__(2613)
 
@@ -76768,6 +76751,9 @@ Object.defineProperties(Headers.prototype, {
   [Symbol.toStringTag]: {
     value: 'Headers',
     configurable: true
+  },
+  [util.inspect.custom]: {
+    enumerable: false
   }
 })
 
@@ -85915,6 +85901,20 @@ class Pool extends PoolBase {
       ? { ...options.interceptors }
       : undefined
     this[kFactory] = factory
+
+    this.on('connectionError', (origin, targets, error) => {
+      // If a connection error occurs, we remove the client from the pool,
+      // and emit a connectionError event. They will not be re-used.
+      // Fixes https://github.com/nodejs/undici/issues/3895
+      for (const target of targets) {
+        // Do not use kRemoveClient here, as it will close the client,
+        // but the client cannot be closed in this state.
+        const idx = this[kClients].indexOf(target)
+        if (idx !== -1) {
+          this[kClients].splice(idx, 1)
+        }
+      }
+    })
   }
 
   [kGetDispatcher] () {
@@ -88206,6 +88206,453 @@ module.exports = {
   WebSocket
 }
 
+
+/***/ }),
+
+/***/ 1730:
+/***/ ((module, __unused_webpack___webpack_exports__, __nccwpck_require__) => {
+
+__nccwpck_require__.a(module, async (__webpack_handle_async_dependencies__, __webpack_async_result__) => { try {
+/* harmony import */ var os__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(857);
+/* harmony import */ var os__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__nccwpck_require__.n(os__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var path__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(6928);
+/* harmony import */ var path__WEBPACK_IMPORTED_MODULE_1___default = /*#__PURE__*/__nccwpck_require__.n(path__WEBPACK_IMPORTED_MODULE_1__);
+/* harmony import */ var lodash__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(2356);
+/* harmony import */ var lodash__WEBPACK_IMPORTED_MODULE_2___default = /*#__PURE__*/__nccwpck_require__.n(lodash__WEBPACK_IMPORTED_MODULE_2__);
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(9896);
+/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_3___default = /*#__PURE__*/__nccwpck_require__.n(fs__WEBPACK_IMPORTED_MODULE_3__);
+/* harmony import */ var _actions_cache__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(5116);
+/* harmony import */ var _actions_cache__WEBPACK_IMPORTED_MODULE_4___default = /*#__PURE__*/__nccwpck_require__.n(_actions_cache__WEBPACK_IMPORTED_MODULE_4__);
+/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(7484);
+/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_5___default = /*#__PURE__*/__nccwpck_require__.n(_actions_core__WEBPACK_IMPORTED_MODULE_5__);
+/* harmony import */ var _actions_tool_cache__WEBPACK_IMPORTED_MODULE_6__ = __nccwpck_require__(3472);
+/* harmony import */ var _actions_tool_cache__WEBPACK_IMPORTED_MODULE_6___default = /*#__PURE__*/__nccwpck_require__.n(_actions_tool_cache__WEBPACK_IMPORTED_MODULE_6__);
+/* harmony import */ var _octokit_rest__WEBPACK_IMPORTED_MODULE_7__ = __nccwpck_require__(6999);
+/* harmony import */ var _octokit_plugin_throttling__WEBPACK_IMPORTED_MODULE_8__ = __nccwpck_require__(6856);
+/* harmony import */ var hasha__WEBPACK_IMPORTED_MODULE_11__ = __nccwpck_require__(7690);
+/* harmony import */ var axios__WEBPACK_IMPORTED_MODULE_9__ = __nccwpck_require__(7568);
+/* harmony import */ var axios__WEBPACK_IMPORTED_MODULE_10__ = __nccwpck_require__(9159);
+var __webpack_async_dependencies__ = __webpack_handle_async_dependencies__([hasha__WEBPACK_IMPORTED_MODULE_11__]);
+hasha__WEBPACK_IMPORTED_MODULE_11__ = (__webpack_async_dependencies__.then ? (await __webpack_async_dependencies__)() : __webpack_async_dependencies__)[0];
+
+
+
+const { escapeRegExp } = (lodash__WEBPACK_IMPORTED_MODULE_2___default());
+
+
+
+
+
+
+
+
+const ThrottlingOctokit = _octokit_rest__WEBPACK_IMPORTED_MODULE_7__/* .Octokit */ .E.plugin(_octokit_plugin_throttling__WEBPACK_IMPORTED_MODULE_8__/* .throttling */ .A);
+const SUPPORTED_TAR_EXTENSIONS = [".tar.gz", ".tar.xz", ".tar.bz2", ".tgz"];
+// Add path validation
+function validatePath(inputPath) {
+    const normalized = path__WEBPACK_IMPORTED_MODULE_1__.normalize(inputPath);
+    if (normalized.includes('..') || path__WEBPACK_IMPORTED_MODULE_1__.isAbsolute(normalized)) {
+        throw new Error('Invalid path: path traversal detected');
+    }
+    return normalized;
+}
+// Validate chmod format
+function validateChmod(chmod) {
+    if (!/^[0-7]{3,4}$/.test(chmod)) {
+        throw new Error('Invalid chmod format');
+    }
+    return chmod;
+}
+async function validateSubscription() {
+    const API_URL = `https://agent.api.stepsecurity.io/v1/github/${process.env.GITHUB_REPOSITORY}/actions/subscription`;
+    try {
+        await axios__WEBPACK_IMPORTED_MODULE_9__/* ["default"] */ .A.get(API_URL, { timeout: 3000 });
+    }
+    catch (error) {
+        if ((0,axios__WEBPACK_IMPORTED_MODULE_10__/* .isAxiosError */ .F0)(error) && error.response?.status === 403) {
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.error('Subscription is not valid. Reach out to support@stepsecurity.io');
+            process.exit(1);
+        }
+        else {
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info('Timeout or API not reachable. Continuing to next step.');
+        }
+    }
+}
+async function run() {
+    try {
+        await validateSubscription();
+        const token = process.env["GITHUB_TOKEN"] || _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("token");
+        const octokit = new ThrottlingOctokit({
+            throttle: {
+                onRateLimit: (retryAfter, options) => {
+                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.warning(`RateLimit detected for request ${options.method} ${options.url}.`);
+                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Retrying after ${retryAfter} seconds.`);
+                    return true;
+                },
+                onSecondaryRateLimit: (retryAfter, options) => {
+                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.warning(`SecondaryRateLimit detected for request ${options.method} ${options.url}.`);
+                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Retrying after ${retryAfter} seconds.`);
+                    return true;
+                },
+            },
+            auth: token,
+            userAgent: "actions/github-action",
+            baseUrl: process.env["GITHUB_API_URL"] || "https://api.github.com",
+            request: { timeout: 5000 },
+        });
+        const repo = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("repo");
+        if (!repo) {
+            throw new Error("Repo was not specified");
+        }
+        let tag = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("tag");
+        tag = !tag ? "latest" : tag;
+        let prerelease = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("prerelease") === "true";
+        const cacheEnabled = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("cache") === "enable" && tag !== "latest" && tag !== "";
+        const [owner, repoName] = repo.split("/");
+        let assetName = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("asset-name");
+        let osMatch = [];
+        let osPlatform = escapeRegExp(_actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("platform"));
+        if (osPlatform === "") {
+            switch (os__WEBPACK_IMPORTED_MODULE_0__.platform()) {
+                case "linux":
+                    osPlatform = "linux";
+                    break;
+                case "darwin":
+                    osPlatform = "darwin";
+                    break;
+                case "win32":
+                    osPlatform = "windows";
+                    break;
+                default:
+                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed("Unsupported operating system - $this action is only released for Darwin, Linux and Windows");
+                    return;
+            }
+        }
+        osMatch.push(osPlatform);
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> System reported platform: ${os__WEBPACK_IMPORTED_MODULE_0__.platform()}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Using platform: ${osPlatform}`);
+        const osArchMatch = [];
+        let osArch = escapeRegExp(_actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("arch"));
+        if (osArch === "") {
+            osArch = os__WEBPACK_IMPORTED_MODULE_0__.arch();
+            switch (os__WEBPACK_IMPORTED_MODULE_0__.arch()) {
+                case "x64":
+                    osArchMatch.push("x86_64", "x64", "amd64");
+                    break;
+                case "arm64":
+                    osArchMatch.push("aarch64", "arm64");
+                    break;
+                default:
+                    osArchMatch.push(os__WEBPACK_IMPORTED_MODULE_0__.arch());
+                    break;
+            }
+        }
+        else {
+            osArchMatch.push(osArch);
+        }
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> System reported arch: ${os__WEBPACK_IMPORTED_MODULE_0__.arch()}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Using arch: ${osArch}`);
+        const extMatching = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("extension-matching") === "enable";
+        let extension = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("extension");
+        let extMatchRegexForm = "";
+        if (extMatching) {
+            if (extension === "") {
+                extMatchRegexForm = "\\.(tar.gz|tar.xz|zip|tgz)";
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Using default file extension matching: ${extMatchRegexForm}`);
+            }
+            else {
+                extMatchRegexForm = escapeRegExp(extension);
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Using custom file extension matching: ${extMatchRegexForm}`);
+            }
+        }
+        else {
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info("==> File extension matching disabled");
+        }
+        let renameTo = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("rename-to");
+        if (renameTo !== "") {
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Will rename downloaded release to ${renameTo}`);
+        }
+        let chmodTo = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("chmod");
+        if (chmodTo !== "") {
+            chmodTo = validateChmod(chmodTo);
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Will chmod downloaded release asset to ${chmodTo}`);
+        }
+        let toolInfo = {
+            owner,
+            repoName,
+            assetName,
+            tag,
+            osArch,
+            osPlatform
+        };
+        let dest = toolPath(toolInfo);
+        let binariesLocation = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("binaries-location");
+        let finalBinLocation = dest;
+        if (binariesLocation !== "") {
+            binariesLocation = validatePath(binariesLocation);
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Given bin location: ${binariesLocation}`);
+            finalBinLocation = path__WEBPACK_IMPORTED_MODULE_1__.join(dest, binariesLocation);
+        }
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Binaries will be located at: ${finalBinLocation}`);
+        let cacheKey = cachePrimaryKey(toolInfo);
+        if (cacheEnabled && cacheKey !== undefined) {
+            let ok = await _actions_cache__WEBPACK_IMPORTED_MODULE_4__.restoreCache([dest], cacheKey);
+            if (ok !== undefined) {
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Found ${assetName} in the cache: ${dest}`);
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Adding ${finalBinLocation} to the path`);
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.addPath(finalBinLocation);
+                return;
+            }
+        }
+        const getRelease = async () => {
+            if (tag === "latest") {
+                if (prerelease) {
+                    let page = 1;
+                    const per_page = 30;
+                    while (true) {
+                        const { data: releases } = await octokit.rest.repos.listReleases({ owner, repo: repoName, per_page, page });
+                        const release = releases.find(r => r.prerelease);
+                        if (release) {
+                            return release;
+                        }
+                        if (releases.length < per_page) {
+                            return undefined;
+                        }
+                        ++page;
+                    }
+                }
+                else {
+                    const release = await octokit.rest.repos.getLatestRelease({ owner, repo: repoName });
+                    return release.data;
+                }
+            }
+            else {
+                const release = await octokit.rest.repos.getReleaseByTag({ owner, repo: repoName, tag });
+                return release.data;
+            }
+        };
+        let release = await getRelease();
+        if (!release) {
+            throw new Error(`Could not find release for tag ${tag}${prerelease ? " with prerelease" : ""}.`);
+        }
+        let osArchMatchRegexForm = `(${osArchMatch.join("|")})`;
+        let osArchRegex = new RegExp(`${osArchMatchRegexForm}`);
+        let vendorRegex = new RegExp("(apple|linux|pc|unknown)?");
+        let osMatchRegexForm = `(${osMatch.join("|")})`;
+        let osRegex = new RegExp(`${osMatchRegexForm}`);
+        let libcRegex = new RegExp("(gnu|glibc|musl)?");
+        let extensionRegex = new RegExp(`${extMatchRegexForm}$`);
+        let asset = release.assets.find(obj => {
+            let normalized = obj.name.toLowerCase();
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`checking for arch/vendor/os/glibc triple matches for (normalized) asset [${normalized}]`);
+            const nameIncluded = assetName ? normalized.includes(assetName) : true;
+            if (!nameIncluded) {
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug(`name [${assetName}] wasn't included in [${normalized}]`);
+            }
+            const osArchMatches = osArchRegex.test(normalized);
+            if (!osArchMatches) {
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug("osArch didn't match");
+            }
+            const osMatches = osRegex.test(normalized);
+            if (!osMatches) {
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug("os didn't match");
+            }
+            const vendorMatches = vendorRegex.test(normalized);
+            if (!vendorMatches) {
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug("vendor didn't match");
+            }
+            const libcMatches = libcRegex.test(normalized);
+            if (!libcMatches) {
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug("libc calling didn't match");
+            }
+            const extensionMatches = extensionRegex.test(normalized);
+            if (!extensionMatches) {
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug("extension didn't match");
+            }
+            const matches = nameIncluded && osArchMatches && osMatches && vendorMatches && libcMatches && extensionMatches;
+            if (matches) {
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`artifact matched: ${normalized}`);
+            }
+            return matches;
+        });
+        if (!asset) {
+            const found = release.assets.map(f => f.name);
+            throw new Error(`Could not find asset for ${tag}. Found: ${found}`);
+        }
+        const url = asset.url;
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Downloading ${asset.name} from ${url}`);
+        const binPath = await _actions_tool_cache__WEBPACK_IMPORTED_MODULE_6__.downloadTool(url, undefined, `token ${token}`, { accept: "application/octet-stream" });
+        const digest = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("digest");
+        if (digest !== "") {
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Will verify the downloaded release asset ${asset.name} with digest ${digest}`);
+            const computedDigest = await (0,hasha__WEBPACK_IMPORTED_MODULE_11__/* .hashFile */ .DC)(binPath, { algorithm: "sha256" });
+            if (digest !== computedDigest) {
+                throw new Error(`Digests mismatch for the release asset ${asset.name}. Expected "${digest}". Got "${computedDigest}".`);
+            }
+        }
+        const extractFn = getExtractFn(asset.name);
+        if (extractFn !== undefined) {
+            const extractFlags = getExtractFlags(asset.name);
+            if (extractFlags !== undefined) {
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Attempting to extract archive with custom flags ${extractFlags}`);
+                await extractFn(binPath, dest, extractFlags);
+            }
+            else {
+                await extractFn(binPath, dest);
+            }
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Automatically extracted release asset ${asset.name} to ${dest}`);
+            const binFiles = fs__WEBPACK_IMPORTED_MODULE_3__.readdirSync(finalBinLocation, { recursive: true, withFileTypes: true }).filter(item => item.name.includes(assetName) && item.isFile());
+            if (binFiles.length === 0) {
+                throw new Error(`No files found in ${finalBinLocation}`);
+            }
+            else if (binFiles.length > 1 && renameTo !== "") {
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.warning("rename-to parameter ignored when installing                 a release from an archive that contains multiple files.");
+            }
+            for (const { parentPath, name } of binFiles) {
+                const currentBinPath = path__WEBPACK_IMPORTED_MODULE_1__.resolve(path__WEBPACK_IMPORTED_MODULE_1__.join(parentPath, name));
+                const finalBinPath = path__WEBPACK_IMPORTED_MODULE_1__.resolve(path__WEBPACK_IMPORTED_MODULE_1__.join(finalBinLocation, name));
+                if (currentBinPath != finalBinPath) {
+                    try {
+                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug(`detected binary not in folder on PATH, copying binary from [${currentBinPath}] to [${finalBinPath}]`);
+                        fs__WEBPACK_IMPORTED_MODULE_3__.copyFileSync(currentBinPath, finalBinPath);
+                    }
+                    catch (copyErr) {
+                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to copy binary to folder in PATH: ${copyErr}`);
+                    }
+                }
+                if (chmodTo !== "") {
+                    try {
+                        fs__WEBPACK_IMPORTED_MODULE_3__.chmodSync(finalBinPath, chmodTo);
+                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`chmod'd ${finalBinPath} to ${chmodTo}`);
+                    }
+                    catch (chmodErr) {
+                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to chmod ${finalBinPath} to ${chmodTo}: ${chmodErr}`);
+                    }
+                }
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`installed binary [${finalBinPath}] (present in PATH)`);
+            }
+        }
+        else {
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Release asset ${asset.name} did not have a recognised file extension, unable to automatically extract it`);
+            try {
+                fs__WEBPACK_IMPORTED_MODULE_3__.mkdirSync(dest, { recursive: true });
+                if (renameTo !== "") {
+                    renameTo = validatePath(renameTo);
+                }
+                const outputPath = path__WEBPACK_IMPORTED_MODULE_1__.join(dest, renameTo !== "" ? renameTo : path__WEBPACK_IMPORTED_MODULE_1__.basename(binPath));
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Created output directory ${dest}`);
+                let moveFailed = false;
+                try {
+                    fs__WEBPACK_IMPORTED_MODULE_3__.renameSync(binPath, outputPath);
+                }
+                catch (renameErr) {
+                    if (renameErr instanceof Error && "code" in renameErr && renameErr.code === "EXDEV") {
+                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug(`Falling back to copy and remove, due to: ${renameErr}`);
+                        try {
+                            fs__WEBPACK_IMPORTED_MODULE_3__.copyFileSync(binPath, outputPath);
+                            fs__WEBPACK_IMPORTED_MODULE_3__.rmSync(binPath);
+                        }
+                        catch (copyRemoveErr) {
+                            moveFailed = true;
+                            _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to copy and remove downloaded release asset ${asset.name} from ${binPath} to ${outputPath}: ${copyRemoveErr}`);
+                        }
+                    }
+                    else {
+                        moveFailed = true;
+                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to move downloaded release asset ${asset.name} from ${binPath} to ${outputPath}: ${renameErr}`);
+                    }
+                }
+                if (!moveFailed) {
+                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Moved release asset ${asset.name} to ${outputPath}`);
+                }
+                if (chmodTo !== "" && !moveFailed) {
+                    try {
+                        fs__WEBPACK_IMPORTED_MODULE_3__.chmodSync(outputPath, chmodTo);
+                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`chmod'd ${outputPath} to ${chmodTo}`);
+                    }
+                    catch (chmodErr) {
+                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to chmod ${outputPath} to ${chmodTo}: ${chmodErr}`);
+                    }
+                }
+            }
+            catch (err) {
+                _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to create required output directory ${dest}`);
+            }
+        }
+        if (cacheEnabled && cacheKey !== undefined) {
+            try {
+                await _actions_cache__WEBPACK_IMPORTED_MODULE_4__.saveCache([dest], cacheKey);
+            }
+            catch (error) {
+                const typedError = error;
+                if (typedError.name === _actions_cache__WEBPACK_IMPORTED_MODULE_4__.ValidationError.name) {
+                    throw error;
+                }
+                else if (typedError.name === _actions_cache__WEBPACK_IMPORTED_MODULE_4__.ReserveCacheError.name) {
+                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(typedError.message);
+                }
+                else {
+                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.warning(typedError.message);
+                }
+            }
+        }
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Adding ${finalBinLocation} to the path`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.addPath(finalBinLocation);
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Successfully installed ${assetName}`);
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Binaries available at ${finalBinLocation}`);
+    }
+    catch (error) {
+        if (error instanceof Error) {
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(error.message);
+        }
+        else {
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed("catastrophic failure, please file an issue");
+        }
+    }
+}
+function cachePrimaryKey(info) {
+    if (info.tag === "latest") {
+        return undefined;
+    }
+    return "action-install-gh-release/" + `${info.owner}/${info.assetName}/${info.tag}/${info.osPlatform}-${info.osArch}`;
+}
+function toolPath(info) {
+    let subDir = info.assetName ? info.assetName : info.repoName;
+    return path__WEBPACK_IMPORTED_MODULE_1__.join(getCacheDirectory(), info.owner, subDir, info.tag, `${info.osPlatform}-${info.osArch}`);
+}
+function getCacheDirectory() {
+    const cacheDirectory = process.env["RUNNER_TOOL_CACHE"] || "";
+    if (cacheDirectory === "") {
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.warning("Expected RUNNER_TOOL_CACHE to be defined");
+    }
+    return cacheDirectory;
+}
+function getExtractFn(assetName) {
+    if (SUPPORTED_TAR_EXTENSIONS.some(ext => assetName.endsWith(ext))) {
+        return _actions_tool_cache__WEBPACK_IMPORTED_MODULE_6__.extractTar;
+    }
+    else if (assetName.endsWith(".zip")) {
+        return _actions_tool_cache__WEBPACK_IMPORTED_MODULE_6__.extractZip;
+    }
+    else {
+        return undefined;
+    }
+}
+function getExtractFlags(assetName) {
+    if (assetName.endsWith("tar.xz")) {
+        return "xJ";
+    }
+    else if (assetName.endsWith("tar.bz2")) {
+        return "xj";
+    }
+    else {
+        return undefined;
+    }
+}
+run();
+
+__webpack_async_result__();
+} catch(e) { __webpack_async_result__(e); } });
 
 /***/ }),
 
@@ -99662,446 +100109,6 @@ eval("__nccwpck_require__.r(__webpack_exports__);\n/* harmony export */ __nccwpc
 
 /***/ }),
 
-/***/ 342:
-/***/ ((__webpack_module__, __unused_webpack___webpack_exports__, __nccwpck_require__) => {
-
-__nccwpck_require__.a(__webpack_module__, async (__webpack_handle_async_dependencies__, __webpack_async_result__) => { try {
-/* harmony import */ var os__WEBPACK_IMPORTED_MODULE_0__ = __nccwpck_require__(857);
-/* harmony import */ var path__WEBPACK_IMPORTED_MODULE_1__ = __nccwpck_require__(6928);
-/* harmony import */ var lodash__WEBPACK_IMPORTED_MODULE_2__ = __nccwpck_require__(2356);
-/* harmony import */ var fs__WEBPACK_IMPORTED_MODULE_3__ = __nccwpck_require__(9896);
-/* harmony import */ var _actions_cache__WEBPACK_IMPORTED_MODULE_4__ = __nccwpck_require__(5116);
-/* harmony import */ var _actions_core__WEBPACK_IMPORTED_MODULE_5__ = __nccwpck_require__(7484);
-/* harmony import */ var _actions_tool_cache__WEBPACK_IMPORTED_MODULE_6__ = __nccwpck_require__(3472);
-/* harmony import */ var _octokit_rest__WEBPACK_IMPORTED_MODULE_7__ = __nccwpck_require__(6999);
-/* harmony import */ var _octokit_plugin_throttling__WEBPACK_IMPORTED_MODULE_8__ = __nccwpck_require__(6856);
-/* harmony import */ var hasha__WEBPACK_IMPORTED_MODULE_11__ = __nccwpck_require__(7690);
-/* harmony import */ var axios__WEBPACK_IMPORTED_MODULE_9__ = __nccwpck_require__(7568);
-/* harmony import */ var axios__WEBPACK_IMPORTED_MODULE_10__ = __nccwpck_require__(9159);
-var __webpack_async_dependencies__ = __webpack_handle_async_dependencies__([hasha__WEBPACK_IMPORTED_MODULE_11__]);
-hasha__WEBPACK_IMPORTED_MODULE_11__ = (__webpack_async_dependencies__.then ? (await __webpack_async_dependencies__)() : __webpack_async_dependencies__)[0];
-
-
-
-const { escapeRegExp } = lodash__WEBPACK_IMPORTED_MODULE_2__;
-
-
-
-
-
-
-
-
-const ThrottlingOctokit = _octokit_rest__WEBPACK_IMPORTED_MODULE_7__/* .Octokit */ .E.plugin(_octokit_plugin_throttling__WEBPACK_IMPORTED_MODULE_8__/* .throttling */ .A);
-const SUPPORTED_TAR_EXTENSIONS = [".tar.gz", ".tar.xz", ".tar.bz2", ".tgz"];
-// Add path validation
-function validatePath(inputPath) {
-    const normalized = path__WEBPACK_IMPORTED_MODULE_1__.normalize(inputPath);
-    if (normalized.includes('..') || path__WEBPACK_IMPORTED_MODULE_1__.isAbsolute(normalized)) {
-        throw new Error('Invalid path: path traversal detected');
-    }
-    return normalized;
-}
-// Validate chmod format
-function validateChmod(chmod) {
-    if (!/^[0-7]{3,4}$/.test(chmod)) {
-        throw new Error('Invalid chmod format');
-    }
-    return chmod;
-}
-async function validateSubscription() {
-    const API_URL = `https://agent.api.stepsecurity.io/v1/github/${process.env.GITHUB_REPOSITORY}/actions/subscription`;
-    try {
-        await axios__WEBPACK_IMPORTED_MODULE_9__/* ["default"] */ .A.get(API_URL, { timeout: 3000 });
-    }
-    catch (error) {
-        if ((0,axios__WEBPACK_IMPORTED_MODULE_10__/* .isAxiosError */ .F0)(error) && error.response?.status === 403) {
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.error('Subscription is not valid. Reach out to support@stepsecurity.io');
-            process.exit(1);
-        }
-        else {
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info('Timeout or API not reachable. Continuing to next step.');
-        }
-    }
-}
-async function run() {
-    try {
-        await validateSubscription();
-        const token = process.env["GITHUB_TOKEN"] || _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("token");
-        const octokit = new ThrottlingOctokit({
-            throttle: {
-                onRateLimit: (retryAfter, options) => {
-                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.warning(`RateLimit detected for request ${options.method} ${options.url}.`);
-                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Retrying after ${retryAfter} seconds.`);
-                    return true;
-                },
-                onSecondaryRateLimit: (retryAfter, options) => {
-                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.warning(`SecondaryRateLimit detected for request ${options.method} ${options.url}.`);
-                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Retrying after ${retryAfter} seconds.`);
-                    return true;
-                },
-            },
-            auth: token,
-            userAgent: "actions/github-action",
-            baseUrl: process.env["GITHUB_API_URL"] || "https://api.github.com",
-            request: { timeout: 5000 },
-        });
-        const repo = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("repo");
-        if (!repo) {
-            throw new Error("Repo was not specified");
-        }
-        let tag = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("tag");
-        tag = !tag ? "latest" : tag;
-        let prerelease = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("prerelease") === "true";
-        const cacheEnabled = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("cache") === "enable" && tag !== "latest" && tag !== "";
-        const [owner, repoName] = repo.split("/");
-        let assetName = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("asset-name");
-        let osMatch = [];
-        let osPlatform = escapeRegExp(_actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("platform"));
-        if (osPlatform === "") {
-            switch (os__WEBPACK_IMPORTED_MODULE_0__.platform()) {
-                case "linux":
-                    osPlatform = "linux";
-                    break;
-                case "darwin":
-                    osPlatform = "darwin";
-                    break;
-                case "win32":
-                    osPlatform = "windows";
-                    break;
-                default:
-                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed("Unsupported operating system - $this action is only released for Darwin, Linux and Windows");
-                    return;
-            }
-        }
-        osMatch.push(osPlatform);
-        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> System reported platform: ${os__WEBPACK_IMPORTED_MODULE_0__.platform()}`);
-        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Using platform: ${osPlatform}`);
-        const osArchMatch = [];
-        let osArch = escapeRegExp(_actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("arch"));
-        if (osArch === "") {
-            osArch = os__WEBPACK_IMPORTED_MODULE_0__.arch();
-            switch (os__WEBPACK_IMPORTED_MODULE_0__.arch()) {
-                case "x64":
-                    osArchMatch.push("x86_64", "x64", "amd64");
-                    break;
-                case "arm64":
-                    osArchMatch.push("aarch64", "arm64");
-                    break;
-                default:
-                    osArchMatch.push(os__WEBPACK_IMPORTED_MODULE_0__.arch());
-                    break;
-            }
-        }
-        else {
-            osArchMatch.push(osArch);
-        }
-        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> System reported arch: ${os__WEBPACK_IMPORTED_MODULE_0__.arch()}`);
-        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Using arch: ${osArch}`);
-        const extMatching = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("extension-matching") === "enable";
-        let extension = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("extension");
-        let extMatchRegexForm = "";
-        if (extMatching) {
-            if (extension === "") {
-                extMatchRegexForm = "\\.(tar.gz|tar.xz|zip|tgz)";
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Using default file extension matching: ${extMatchRegexForm}`);
-            }
-            else {
-                extMatchRegexForm = escapeRegExp(extension);
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Using custom file extension matching: ${extMatchRegexForm}`);
-            }
-        }
-        else {
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info("==> File extension matching disabled");
-        }
-        let renameTo = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("rename-to");
-        if (renameTo !== "") {
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Will rename downloaded release to ${renameTo}`);
-        }
-        let chmodTo = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("chmod");
-        if (chmodTo !== "") {
-            chmodTo = validateChmod(chmodTo);
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Will chmod downloaded release asset to ${chmodTo}`);
-        }
-        let toolInfo = {
-            owner,
-            repoName,
-            assetName,
-            tag,
-            osArch,
-            osPlatform
-        };
-        let dest = toolPath(toolInfo);
-        let binariesLocation = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("binaries-location");
-        let finalBinLocation = dest;
-        if (binariesLocation !== "") {
-            binariesLocation = validatePath(binariesLocation);
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Given bin location: ${binariesLocation}`);
-            finalBinLocation = path__WEBPACK_IMPORTED_MODULE_1__.join(dest, binariesLocation);
-        }
-        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Binaries will be located at: ${finalBinLocation}`);
-        let cacheKey = cachePrimaryKey(toolInfo);
-        if (cacheEnabled && cacheKey !== undefined) {
-            let ok = await _actions_cache__WEBPACK_IMPORTED_MODULE_4__.restoreCache([dest], cacheKey);
-            if (ok !== undefined) {
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Found ${assetName} in the cache: ${dest}`);
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Adding ${finalBinLocation} to the path`);
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.addPath(finalBinLocation);
-                return;
-            }
-        }
-        const getRelease = async () => {
-            if (tag === "latest") {
-                if (prerelease) {
-                    let page = 1;
-                    const per_page = 30;
-                    while (true) {
-                        const { data: releases } = await octokit.rest.repos.listReleases({ owner, repo: repoName, per_page, page });
-                        const release = releases.find(r => r.prerelease);
-                        if (release) {
-                            return release;
-                        }
-                        if (releases.length < per_page) {
-                            return undefined;
-                        }
-                        ++page;
-                    }
-                }
-                else {
-                    const release = await octokit.rest.repos.getLatestRelease({ owner, repo: repoName });
-                    return release.data;
-                }
-            }
-            else {
-                const release = await octokit.rest.repos.getReleaseByTag({ owner, repo: repoName, tag });
-                return release.data;
-            }
-        };
-        let release = await getRelease();
-        if (!release) {
-            throw new Error(`Could not find release for tag ${tag}${prerelease ? " with prerelease" : ""}.`);
-        }
-        let osArchMatchRegexForm = `(${osArchMatch.join("|")})`;
-        let osArchRegex = new RegExp(`${osArchMatchRegexForm}`);
-        let vendorRegex = new RegExp("(apple|linux|pc|unknown)?");
-        let osMatchRegexForm = `(${osMatch.join("|")})`;
-        let osRegex = new RegExp(`${osMatchRegexForm}`);
-        let libcRegex = new RegExp("(gnu|glibc|musl)?");
-        let extensionRegex = new RegExp(`${extMatchRegexForm}$`);
-        let asset = release.assets.find(obj => {
-            let normalized = obj.name.toLowerCase();
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`checking for arch/vendor/os/glibc triple matches for (normalized) asset [${normalized}]`);
-            const nameIncluded = assetName ? normalized.includes(assetName) : true;
-            if (!nameIncluded) {
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug(`name [${assetName}] wasn't included in [${normalized}]`);
-            }
-            const osArchMatches = osArchRegex.test(normalized);
-            if (!osArchMatches) {
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug("osArch didn't match");
-            }
-            const osMatches = osRegex.test(normalized);
-            if (!osMatches) {
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug("os didn't match");
-            }
-            const vendorMatches = vendorRegex.test(normalized);
-            if (!vendorMatches) {
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug("vendor didn't match");
-            }
-            const libcMatches = libcRegex.test(normalized);
-            if (!libcMatches) {
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug("libc calling didn't match");
-            }
-            const extensionMatches = extensionRegex.test(normalized);
-            if (!extensionMatches) {
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug("extension didn't match");
-            }
-            const matches = nameIncluded && osArchMatches && osMatches && vendorMatches && libcMatches && extensionMatches;
-            if (matches) {
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`artifact matched: ${normalized}`);
-            }
-            return matches;
-        });
-        if (!asset) {
-            const found = release.assets.map(f => f.name);
-            throw new Error(`Could not find asset for ${tag}. Found: ${found}`);
-        }
-        const url = asset.url;
-        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Downloading ${asset.name} from ${url}`);
-        const binPath = await _actions_tool_cache__WEBPACK_IMPORTED_MODULE_6__.downloadTool(url, undefined, `token ${token}`, { accept: "application/octet-stream" });
-        const digest = _actions_core__WEBPACK_IMPORTED_MODULE_5__.getInput("digest");
-        if (digest !== "") {
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`==> Will verify the downloaded release asset ${asset.name} with digest ${digest}`);
-            const computedDigest = await (0,hasha__WEBPACK_IMPORTED_MODULE_11__/* .hashFile */ .DC)(binPath, { algorithm: "sha256" });
-            if (digest !== computedDigest) {
-                throw new Error(`Digests mismatch for the release asset ${asset.name}. Expected "${digest}". Got "${computedDigest}".`);
-            }
-        }
-        const extractFn = getExtractFn(asset.name);
-        if (extractFn !== undefined) {
-            const extractFlags = getExtractFlags(asset.name);
-            if (extractFlags !== undefined) {
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Attempting to extract archive with custom flags ${extractFlags}`);
-                await extractFn(binPath, dest, extractFlags);
-            }
-            else {
-                await extractFn(binPath, dest);
-            }
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Automatically extracted release asset ${asset.name} to ${dest}`);
-            const binFiles = fs__WEBPACK_IMPORTED_MODULE_3__.readdirSync(finalBinLocation, { recursive: true, withFileTypes: true }).filter(item => item.name.includes(assetName) && item.isFile());
-            if (binFiles.length === 0) {
-                throw new Error(`No files found in ${finalBinLocation}`);
-            }
-            else if (binFiles.length > 1 && renameTo !== "") {
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.warning("rename-to parameter ignored when installing                 a release from an archive that contains multiple files.");
-            }
-            for (const { parentPath, name } of binFiles) {
-                const currentBinPath = path__WEBPACK_IMPORTED_MODULE_1__.resolve(path__WEBPACK_IMPORTED_MODULE_1__.join(parentPath, name));
-                const finalBinPath = path__WEBPACK_IMPORTED_MODULE_1__.resolve(path__WEBPACK_IMPORTED_MODULE_1__.join(finalBinLocation, name));
-                if (currentBinPath != finalBinPath) {
-                    try {
-                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug(`detected binary not in folder on PATH, copying binary from [${currentBinPath}] to [${finalBinPath}]`);
-                        fs__WEBPACK_IMPORTED_MODULE_3__.copyFileSync(currentBinPath, finalBinPath);
-                    }
-                    catch (copyErr) {
-                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to copy binary to folder in PATH: ${copyErr}`);
-                    }
-                }
-                if (chmodTo !== "") {
-                    try {
-                        fs__WEBPACK_IMPORTED_MODULE_3__.chmodSync(finalBinPath, chmodTo);
-                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`chmod'd ${finalBinPath} to ${chmodTo}`);
-                    }
-                    catch (chmodErr) {
-                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to chmod ${finalBinPath} to ${chmodTo}: ${chmodErr}`);
-                    }
-                }
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`installed binary [${finalBinPath}] (present in PATH)`);
-            }
-        }
-        else {
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Release asset ${asset.name} did not have a recognised file extension, unable to automatically extract it`);
-            try {
-                fs__WEBPACK_IMPORTED_MODULE_3__.mkdirSync(dest, { recursive: true });
-                if (renameTo !== "") {
-                    renameTo = validatePath(renameTo);
-                }
-                const outputPath = path__WEBPACK_IMPORTED_MODULE_1__.join(dest, renameTo !== "" ? renameTo : path__WEBPACK_IMPORTED_MODULE_1__.basename(binPath));
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Created output directory ${dest}`);
-                let moveFailed = false;
-                try {
-                    fs__WEBPACK_IMPORTED_MODULE_3__.renameSync(binPath, outputPath);
-                }
-                catch (renameErr) {
-                    if (renameErr instanceof Error && "code" in renameErr && renameErr.code === "EXDEV") {
-                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.debug(`Falling back to copy and remove, due to: ${renameErr}`);
-                        try {
-                            fs__WEBPACK_IMPORTED_MODULE_3__.copyFileSync(binPath, outputPath);
-                            fs__WEBPACK_IMPORTED_MODULE_3__.rmSync(binPath);
-                        }
-                        catch (copyRemoveErr) {
-                            moveFailed = true;
-                            _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to copy and remove downloaded release asset ${asset.name} from ${binPath} to ${outputPath}: ${copyRemoveErr}`);
-                        }
-                    }
-                    else {
-                        moveFailed = true;
-                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to move downloaded release asset ${asset.name} from ${binPath} to ${outputPath}: ${renameErr}`);
-                    }
-                }
-                if (!moveFailed) {
-                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Moved release asset ${asset.name} to ${outputPath}`);
-                }
-                if (chmodTo !== "" && !moveFailed) {
-                    try {
-                        fs__WEBPACK_IMPORTED_MODULE_3__.chmodSync(outputPath, chmodTo);
-                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`chmod'd ${outputPath} to ${chmodTo}`);
-                    }
-                    catch (chmodErr) {
-                        _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to chmod ${outputPath} to ${chmodTo}: ${chmodErr}`);
-                    }
-                }
-            }
-            catch (err) {
-                _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(`Failed to create required output directory ${dest}`);
-            }
-        }
-        if (cacheEnabled && cacheKey !== undefined) {
-            try {
-                await _actions_cache__WEBPACK_IMPORTED_MODULE_4__.saveCache([dest], cacheKey);
-            }
-            catch (error) {
-                const typedError = error;
-                if (typedError.name === _actions_cache__WEBPACK_IMPORTED_MODULE_4__.ValidationError.name) {
-                    throw error;
-                }
-                else if (typedError.name === _actions_cache__WEBPACK_IMPORTED_MODULE_4__.ReserveCacheError.name) {
-                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(typedError.message);
-                }
-                else {
-                    _actions_core__WEBPACK_IMPORTED_MODULE_5__.warning(typedError.message);
-                }
-            }
-        }
-        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Adding ${finalBinLocation} to the path`);
-        _actions_core__WEBPACK_IMPORTED_MODULE_5__.addPath(finalBinLocation);
-        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Successfully installed ${assetName}`);
-        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Binaries available at ${finalBinLocation}`);
-    }
-    catch (error) {
-        if (error instanceof Error) {
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed(error.message);
-        }
-        else {
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.setFailed("catastrophic failure, please file an issue");
-        }
-    }
-}
-function cachePrimaryKey(info) {
-    if (info.tag === "latest") {
-        return undefined;
-    }
-    return "action-install-gh-release/" + `${info.owner}/${info.assetName}/${info.tag}/${info.osPlatform}-${info.osArch}`;
-}
-function toolPath(info) {
-    let subDir = info.assetName ? info.assetName : info.repoName;
-    return path__WEBPACK_IMPORTED_MODULE_1__.join(getCacheDirectory(), info.owner, subDir, info.tag, `${info.osPlatform}-${info.osArch}`);
-}
-function getCacheDirectory() {
-    const cacheDirectory = process.env["RUNNER_TOOL_CACHE"] || "";
-    if (cacheDirectory === "") {
-        _actions_core__WEBPACK_IMPORTED_MODULE_5__.warning("Expected RUNNER_TOOL_CACHE to be defined");
-    }
-    return cacheDirectory;
-}
-function getExtractFn(assetName) {
-    if (SUPPORTED_TAR_EXTENSIONS.some(ext => assetName.endsWith(ext))) {
-        return _actions_tool_cache__WEBPACK_IMPORTED_MODULE_6__.extractTar;
-    }
-    else if (assetName.endsWith(".zip")) {
-        return _actions_tool_cache__WEBPACK_IMPORTED_MODULE_6__.extractZip;
-    }
-    else {
-        return undefined;
-    }
-}
-function getExtractFlags(assetName) {
-    if (assetName.endsWith("tar.xz")) {
-        return "xJ";
-    }
-    else if (assetName.endsWith("tar.bz2")) {
-        return "xj";
-    }
-    else {
-        return undefined;
-    }
-}
-run();
-
-__webpack_async_result__();
-} catch(e) { __webpack_async_result__(e); } });
-
-/***/ }),
-
 /***/ 6856:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __nccwpck_require__) => {
 
@@ -110026,6 +110033,18 @@ module.exports = /*#__PURE__*/JSON.parse('{"application/1d-interleaved-parityfec
 /******/ 	};
 /******/ })();
 /******/ 
+/******/ /* webpack/runtime/compat get default export */
+/******/ (() => {
+/******/ 	// getDefaultExport function for compatibility with non-harmony modules
+/******/ 	__nccwpck_require__.n = (module) => {
+/******/ 		var getter = module && module.__esModule ?
+/******/ 			() => (module['default']) :
+/******/ 			() => (module);
+/******/ 		__nccwpck_require__.d(getter, { a: getter });
+/******/ 		return getter;
+/******/ 	};
+/******/ })();
+/******/ 
 /******/ /* webpack/runtime/create fake namespace object */
 /******/ (() => {
 /******/ 	var getProto = Object.getPrototypeOf ? (obj) => (Object.getPrototypeOf(obj)) : (obj) => (obj.__proto__);
@@ -110102,6 +110121,6 @@ module.exports = /*#__PURE__*/JSON.parse('{"application/1d-interleaved-parityfec
 /******/ // startup
 /******/ // Load entry module and return exports
 /******/ // This entry module used 'module' so it can't be inlined
-/******/ var __webpack_exports__ = __nccwpck_require__(342);
+/******/ var __webpack_exports__ = __nccwpck_require__(1730);
 /******/ __webpack_exports__ = await __webpack_exports__;
 /******/ 
