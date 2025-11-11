@@ -96,3 +96,4 @@ typings/
 .idea
 
 **/.DS_Store
+lib
