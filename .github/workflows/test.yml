@@ -71,10 +71,10 @@ jobs:
           digest: ${{ matrix.build.digest }}
       - run: change-aws-credentials version
 
-  yq:
+  helmfile:
     strategy:
       matrix:
-        version: ["v4.44.6", "v4.44.5", "latest"]
+        version: ["v1.4.3", "v1.4.2", "latest"]
         runs-on:
           ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' &&
           fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest","windows-latest","macos-latest"]') }}
@@ -98,11 +98,11 @@ jobs:
       - run: npm run build
       - uses: ./
         with:
-          repo: mikefarah/yq
+          repo: helmfile/helmfile
           tag: ${{ matrix.version }}
           platform: ${{ matrix.platform }}
           arch: ${{ matrix.arch }}
-      - run: yq --version
+      - run: helmfile --version
 
   opentelemetry-ocb:
     strategy:
