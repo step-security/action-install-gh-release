@@ -71,12 +71,12 @@ jobs:
           digest: ${{ matrix.build.digest }}
       - run: change-aws-credentials version
 
-  tfsec:
+  helmfile:
     strategy:
       matrix:
-        version: ["v1.18.0", "v1.19.0", "latest"]
-        runs-on: 
-          ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' && 
+        version: ["v1.4.3", "v1.4.2", "latest"]
+        runs-on:
+          ${{ github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]' &&
           fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest","windows-latest","macos-latest"]') }}
         arch: ["amd64"]
         include:
@@ -98,11 +98,11 @@ jobs:
       - run: npm run build
       - uses: ./
         with:
-          repo: aquasecurity/tfsec
+          repo: helmfile/helmfile
           tag: ${{ matrix.version }}
           platform: ${{ matrix.platform }}
           arch: ${{ matrix.arch }}
-      - run: tfsec --version
+      - run: helmfile --version
 
   opentelemetry-ocb:
     strategy:
