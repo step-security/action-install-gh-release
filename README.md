@@ -1,3 +1,5 @@
+[![StepSecurity Maintained Action](https://raw.githubusercontent.com/step-security/maintained-actions-assets/main/assets/maintained-action-banner.png)](https://docs.stepsecurity.io/actions/stepsecurity-maintained-actions)
+
 # `install-gh-release` GitHub Action
 
 This repository contains an action for use with GitHub Actions, which will install any GitHub release into your action environment:
