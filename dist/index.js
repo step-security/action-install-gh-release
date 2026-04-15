@@ -88331,18 +88331,38 @@ function validateChmod(chmod) {
     return chmod;
 }
 async function validateSubscription() {
-    const API_URL = `https://agent.api.stepsecurity.io/v1/github/${process.env.GITHUB_REPOSITORY}/actions/subscription`;
+    const eventPath = process.env.GITHUB_EVENT_PATH;
+    let repoPrivate;
+    if (eventPath && fs__WEBPACK_IMPORTED_MODULE_3__.existsSync(eventPath)) {
+        const eventData = JSON.parse(fs__WEBPACK_IMPORTED_MODULE_3__.readFileSync(eventPath, 'utf8'));
+        repoPrivate = eventData?.repository?.private;
+    }
+    const upstream = 'jaxxstorm/action-install-gh-release';
+    const action = process.env.GITHUB_ACTION_REPOSITORY;
+    const docsUrl = 'https://docs.stepsecurity.io/actions/stepsecurity-maintained-actions';
+    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info('');
+    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info('\u001b[1;36mStepSecurity Maintained Action\u001b[0m');
+    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`Secure drop-in replacement for ${upstream}`);
+    if (repoPrivate === false)
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info('\u001b[32m\u2713 Free for public repositories\u001b[0m');
+    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info(`\u001b[36mLearn more:\u001b[0m ${docsUrl}`);
+    _actions_core__WEBPACK_IMPORTED_MODULE_5__.info('');
+    if (repoPrivate === false)
+        return;
+    const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
+    const body = { action: action || '' };
+    if (serverUrl !== 'https://github.com')
+        body.ghes_server = serverUrl;
     try {
-        await axios__WEBPACK_IMPORTED_MODULE_9__/* ["default"] */ .A.get(API_URL, { timeout: 3000 });
+        await axios__WEBPACK_IMPORTED_MODULE_9__/* ["default"] */ .A.post(`https://agent.api.stepsecurity.io/v1/github/${process.env.GITHUB_REPOSITORY}/actions/maintained-actions-subscription`, body, { timeout: 3000 });
     }
     catch (error) {
         if ((0,axios__WEBPACK_IMPORTED_MODULE_10__/* .isAxiosError */ .F0)(error) && error.response?.status === 403) {
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.error('Subscription is not valid. Reach out to support@stepsecurity.io');
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.error(`\u001b[1;31mThis action requires a StepSecurity subscription for private repositories.\u001b[0m`);
+            _actions_core__WEBPACK_IMPORTED_MODULE_5__.error(`\u001b[31mLearn how to enable a subscription: ${docsUrl}\u001b[0m`);
             process.exit(1);
         }
-        else {
-            _actions_core__WEBPACK_IMPORTED_MODULE_5__.info('Timeout or API not reachable. Continuing to next step.');
-        }
+        _actions_core__WEBPACK_IMPORTED_MODULE_5__.info('Timeout or API not reachable. Continuing to next step.');
     }
 }
 async function run() {
