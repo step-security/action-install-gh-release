@@ -5,7 +5,7 @@ SHELL := /bin/bash
 SRC_DIR := src
 BUILD_DIR := lib
 DIST_DIR := dist
-ENTRY_POINT := $(BUILD_DIR)/main.js
+ENTRY_POINT := $(SRC_DIR)/main.ts
 
 # Binaries
 TS_NODE := ./node_modules/.bin/ts-node
@@ -15,9 +15,9 @@ PRETTIER := ./node_modules/.bin/prettier
 NCC := ./node_modules/.bin/ncc
 
 # Targets
-.PHONY: all clean install build format
+.PHONY: all clean install build format prepare typecheck
 
-all: clean install prepare build 
+all: clean install build
 
 # Clean up the dist directory
 clean:
@@ -30,12 +30,16 @@ install:
 dev:
 	npm install --save-dev
 
-build:
+prepare:
 	$(NCC) build $(ENTRY_POINT) -o $(DIST_DIR)
 
-# Build the TypeScript code
-prepare:
-	$(TS_C) --outDir $(BUILD_DIR) --rootDir $(SRC_DIR)
+# Bundle the action into the runtime directory used by action.yml
+build: clean
+	$(NCC) build $(ENTRY_POINT) -o $(DIST_DIR)
+
+# Type-check the TypeScript sources without writing output
+typecheck:
+	$(TS_C) --noEmit
 
 # Lint the TypeScript code
 lint:
@@ -48,5 +52,4 @@ format:
 # Run the action locally (for testing purposes)
 run: build
 	node $(BUILD_DIR)/index.js
-
 
