@@ -1,0 +1,17 @@
+{
+  "$comment": "Managed automatically when syncing with upstream. Do not edit by hand.",
+  "schema_version": 1,
+  "onboarding_type": "copied",
+  "action_type": "node",
+  "upstream": {
+    "repository": "jaxxstorm/action-install-gh-release",
+    "synced_tag": "v4.0.0",
+    "synced_commit": "b82b2052fdf822192f2119b7e289a6f63e668bc8",
+    "archived": false
+  },
+  "build": {
+    "package_manager": "npm@11.19.1",
+    "node_version": "24",
+    "script": "build"
+  }
+}

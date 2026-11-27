@@ -1,19 +1,32 @@
 import * as os from "os";
 import * as path from "path";
-import lo from 'lodash';
-const { escapeRegExp } = lo;
 import * as fs from "fs";
 import * as cache from "@actions/cache";
 import * as core from "@actions/core";
-import * as tc from "@actions/tool-cache";
 import { Octokit } from "@octokit/rest";
 import { throttling } from "@octokit/plugin-throttling";
 import { hashFile } from 'hasha';
 import axios, {isAxiosError} from 'axios'
-
+import {
+    cachePrimaryKey,
+    downloadReleaseAsset,
+    findMatchingAsset,
+    getExtensionMatchRegexForm,
+    getExtractFlags,
+    getExtractFn,
+    getOutputPath,
+    getRelease,
+    installExtractedFiles,
+    moveDownloadedFile,
+    resolveArch,
+    resolvePlatform,
+    resolveToken,
+    toolPath,
+    type ToolInfo,
+    verifyDigest
+} from "./install.js";
 
 const ThrottlingOctokit = Octokit.plugin(throttling) as typeof Octokit;
-const SUPPORTED_TAR_EXTENSIONS = [".tar.gz", ".tar.xz", ".tar.bz2", ".tgz"];
 
 // Add path validation
 function validatePath(inputPath: string): string {
@@ -30,15 +43,6 @@ function validateChmod(chmod: string): string {
         throw new Error('Invalid chmod format');
     }
     return chmod;
-}
-
-interface ToolInfo {
-    owner: string;
-    assetName: string;
-    repoName: string;
-    tag: string;
-    osPlatform: string;
-    osArch: string;
 }
 
 async function validateSubscription(): Promise<void> {
@@ -91,7 +95,7 @@ async function validateSubscription(): Promise<void> {
 async function run() {
     try {
         await validateSubscription();
-        const token = process.env["GITHUB_TOKEN"] || core.getInput("token");
+        const token = resolveToken(core.getInput("token"), process.env["GITHUB_TOKEN"]);
         const octokit = new ThrottlingOctokit({
             throttle: {
                 onRateLimit: (retryAfter, options) => {
@@ -105,7 +109,7 @@ async function run() {
                     return true;
                 },
             },
-            auth: token,
+            ...(token ? { auth: token } : {}),
             userAgent: "actions/github-action",
             baseUrl: process.env["GITHUB_API_URL"] || "https://api.github.com",
             request: { timeout: 5000 },
@@ -120,56 +124,27 @@ async function run() {
         const cacheEnabled = core.getInput("cache") === "enable" && tag !== "latest" && tag !== "";
         const [owner, repoName] = repo.split("/");
         let assetName = core.getInput("asset-name");
-        let osMatch: string[] = [];
-        let osPlatform = escapeRegExp(core.getInput("platform"));
-        if (osPlatform === "") {
-            switch (os.platform()) {
-                case "linux":
-                    osPlatform = "linux";
-                    break;
-                case "darwin":
-                    osPlatform = "darwin";
-                    break;
-                case "win32":
-                    osPlatform = "windows";
-                    break;
-                default:
-                    core.setFailed("Unsupported operating system - $this action is only released for Darwin, Linux and Windows");
-                    return;
-            }
+        const platformMatching = core.getInput("platform-matching") !== "disable";
+        const archMatching = core.getInput("arch-matching") !== "disable";
+        if (!platformMatching) {
+            core.info("==> Platform matching disabled");
         }
-        osMatch.push(osPlatform);
+        if (!archMatching) {
+            core.info("==> Architecture matching disabled");
+        }
+        let osPlatform = resolvePlatform(core.getInput("platform"), os.platform());
         core.info(`==> System reported platform: ${os.platform()}`);
         core.info(`==> Using platform: ${osPlatform}`);
-        const osArchMatch: string[] = [];
-        let osArch = escapeRegExp(core.getInput("arch"));
-        if (osArch === "") {
-            osArch = os.arch();
-            switch (os.arch()) {
-                case "x64":
-                    osArchMatch.push("x86_64", "x64", "amd64");
-                    break;
-                case "arm64":
-                    osArchMatch.push("aarch64", "arm64");
-                    break;
-                default:
-                    osArchMatch.push(os.arch());
-                    break;
-            }
-        } else {
-            osArchMatch.push(osArch);
-        }
+        const { osArch, osArchMatch } = resolveArch(core.getInput("arch"), os.arch());
         core.info(`==> System reported arch: ${os.arch()}`);
         core.info(`==> Using arch: ${osArch}`);
         const extMatching = core.getInput("extension-matching") === "enable";
         let extension = core.getInput("extension");
-        let extMatchRegexForm = "";
+        let extMatchRegexForm = getExtensionMatchRegexForm(extMatching, extension);
         if (extMatching) {
             if (extension === "") {
-                extMatchRegexForm = "\\.(tar.gz|tar.xz|zip|tgz)";
                 core.info(`==> Using default file extension matching: ${extMatchRegexForm}`);
             } else {
-                extMatchRegexForm = escapeRegExp(extension);
                 core.info(`==> Using custom file extension matching: ${extMatchRegexForm}`);
             }
         } else {
@@ -190,9 +165,11 @@ async function run() {
             assetName,
             tag,
             osArch,
-            osPlatform
+            osPlatform,
+            platformMatching,
+            archMatching
         };
-        let dest = toolPath(toolInfo);
+        let dest = toolPath(toolInfo, getCacheDirectory());
         let binariesLocation = core.getInput("binaries-location");
         let finalBinLocation = dest;
         if (binariesLocation !== "") {
@@ -211,76 +188,31 @@ async function run() {
                 return;
             }
         }
-        const getRelease = async () => {
-            if (tag === "latest") {
-                if (prerelease) {
-                    let page = 1;
-                    const per_page = 30;
-                    while (true) {
-                        const { data: releases } = await octokit.rest.repos.listReleases({ owner, repo: repoName, per_page, page });
-                        const release = releases.find(r => r.prerelease);
-                        if (release) {
-                            return release;
-                        }
-                        if (releases.length < per_page) {
-                            return undefined;
-                        }
-                        ++page;
-                    }
-                } else {
-                    const release = await octokit.rest.repos.getLatestRelease({ owner, repo: repoName });
-                    return release.data;
-                }
-            } else {
-                const release = await octokit.rest.repos.getReleaseByTag({ owner, repo: repoName, tag });
-                return release.data;
-            }
-        };
-        let release = await getRelease();
+        let release = await getRelease(octokit.rest.repos, owner, repoName, tag, prerelease);
         if (!release) {
             throw new Error(`Could not find release for tag ${tag}${prerelease ? " with prerelease" : ""}.`);
         }
-        let osArchMatchRegexForm = `(${osArchMatch.join("|")})`;
-        let osArchRegex = new RegExp(`${osArchMatchRegexForm}`);
-        let vendorRegex = new RegExp("(apple|linux|pc|unknown)?");
-        let osMatchRegexForm = `(${osMatch.join("|")})`;
-        let osRegex = new RegExp(`${osMatchRegexForm}`);
-        let libcRegex = new RegExp("(gnu|glibc|musl)?");
-        let extensionRegex = new RegExp(`${extMatchRegexForm}$`);
-        let asset = release.assets.find(obj => {
-            let normalized = obj.name.toLowerCase();
-            core.info(`checking for arch/vendor/os/glibc triple matches for (normalized) asset [${normalized}]`);
-            const nameIncluded = assetName ? normalized.includes(assetName) : true;
-            if (!nameIncluded) { core.debug(`name [${assetName}] wasn't included in [${normalized}]`); }
-            const osArchMatches = osArchRegex.test(normalized);
-            if (!osArchMatches) { core.debug("osArch didn't match"); }
-            const osMatches = osRegex.test(normalized);
-            if (!osMatches) { core.debug("os didn't match"); }
-            const vendorMatches = vendorRegex.test(normalized);
-            if (!vendorMatches) { core.debug("vendor didn't match"); }
-            const libcMatches = libcRegex.test(normalized);
-            if (!libcMatches) { core.debug("libc calling didn't match"); }
-            const extensionMatches = extensionRegex.test(normalized);
-            if (!extensionMatches) { core.debug("extension didn't match"); }
-            const matches = nameIncluded && osArchMatches && osMatches && vendorMatches && libcMatches && extensionMatches;
-            if (matches) { core.info(`artifact matched: ${normalized}`); }
-            return matches;
-        });
+        let asset = findMatchingAsset(release, {
+            assetName,
+            osPlatform,
+            osArchMatch,
+            platformMatching,
+            archMatching,
+            extensionMatchRegexForm: extMatchRegexForm
+        }, core);
         if (!asset) {
             const found = release.assets.map(f => f.name);
             throw new Error(`Could not find asset for ${tag}. Found: ${found}`);
         }
         const url = asset.url;
         core.info(`Downloading ${asset.name} from ${url}`);
-        const binPath = await tc.downloadTool(url, undefined, `token ${token}`, { accept: "application/octet-stream" });
+        const binPath = await downloadReleaseAsset(asset, token);
         const digest = core.getInput("digest");
         if (digest !== "") {
             core.info(`==> Will verify the downloaded release asset ${asset.name} with digest ${digest}`);
 
             const computedDigest = await hashFile(binPath, {algorithm: "sha256"});
-            if (digest !== computedDigest) {
-                throw new Error(`Digests mismatch for the release asset ${asset.name}. Expected "${digest}". Got "${computedDigest}".`);
-            }
+            verifyDigest(asset.name, digest, computedDigest);
         }
         const extractFn = getExtractFn(asset.name);
         if (extractFn !== undefined) {
@@ -292,23 +224,11 @@ async function run() {
                 await extractFn(binPath, dest);
             }
             core.info(`Automatically extracted release asset ${asset.name} to ${dest}`);
-            const binFiles = fs.readdirSync(finalBinLocation, { recursive: true, withFileTypes: true }).filter(item => item.name.includes(assetName) && item.isFile());
-            if (binFiles.length === 0) {
-                throw new Error(`No files found in ${finalBinLocation}`);
-            } else if (binFiles.length > 1 && renameTo !== "") {
+            const binFiles = installExtractedFiles(finalBinLocation);
+            if (binFiles.length > 1 && renameTo !== "") {
                 core.warning("rename-to parameter ignored when installing                 a release from an archive that contains multiple files.");
             }
-            for (const { parentPath, name } of binFiles) {
-                const currentBinPath = path.resolve(path.join(parentPath, name));
-                const finalBinPath = path.resolve(path.join(finalBinLocation, name));
-                if (currentBinPath != finalBinPath) {
-                    try {
-                        core.debug(`detected binary not in folder on PATH, copying binary from [${currentBinPath}] to [${finalBinPath}]`);
-                        fs.copyFileSync(currentBinPath, finalBinPath);
-                    } catch (copyErr) {
-                        core.setFailed(`Failed to copy binary to folder in PATH: ${copyErr}`);
-                    }
-                }
+            for (const finalBinPath of binFiles) {
                 if (chmodTo !== "") {
                     try {
                         fs.chmodSync(finalBinPath, chmodTo);
@@ -326,25 +246,17 @@ async function run() {
                 if (renameTo !== "") {
                     renameTo = validatePath(renameTo);
                 }
-                const outputPath = path.join(dest, renameTo !== "" ? renameTo : path.basename(binPath));
+                const outputPath = getOutputPath(dest, binPath, renameTo);
                 core.info(`Created output directory ${dest}`);
-                let moveFailed = false;
-                try {
-                    fs.renameSync(binPath, outputPath);
-                } catch (renameErr) {
-                    if (renameErr instanceof Error && "code" in renameErr && renameErr.code === "EXDEV") {
-                        core.debug(`Falling back to copy and remove, due to: ${renameErr}`);
-                        try {
-                            fs.copyFileSync(binPath, outputPath);
-                            fs.rmSync(binPath);
-                        } catch (copyRemoveErr) {
-                            moveFailed = true;
-                            core.setFailed(`Failed to copy and remove downloaded release asset ${asset.name} from ${binPath} to ${outputPath}: ${copyRemoveErr}`);
-                        }
-                    } else {
-                        moveFailed = true;
-                        core.setFailed(`Failed to move downloaded release asset ${asset.name} from ${binPath} to ${outputPath}: ${renameErr}`);
-                    }
+                const moveResult = moveDownloadedFile(fs, binPath, outputPath);
+                if (moveResult.usedCopyFallback) {
+                    core.debug(`Falling back to copy and remove, due to: ${moveResult.error}`);
+                }
+                const moveFailed = moveResult.moveFailed;
+                if (moveFailed && moveResult.usedCopyFallback) {
+                    core.setFailed(`Failed to copy and remove downloaded release asset ${asset.name} from ${binPath} to ${outputPath}: ${moveResult.error}`);
+                } else if (moveFailed) {
+                    core.setFailed(`Failed to move downloaded release asset ${asset.name} from ${binPath} to ${outputPath}: ${moveResult.error}`);
                 }
                 if (!moveFailed) {
                     core.info(`Moved release asset ${asset.name} to ${outputPath}`);
@@ -388,44 +300,12 @@ async function run() {
     }
 }
 
-function cachePrimaryKey(info: ToolInfo): string | undefined {
-    if (info.tag === "latest") {
-        return undefined;
-    }
-    return "action-install-gh-release/" + `${info.owner}/${info.assetName}/${info.tag}/${info.osPlatform}-${info.osArch}`;
-}
-
-function toolPath(info: ToolInfo): string {
-    let subDir = info.assetName ? info.assetName : info.repoName;
-    return path.join(getCacheDirectory(), info.owner, subDir, info.tag, `${info.osPlatform}-${info.osArch}`);
-}
-
 function getCacheDirectory() {
     const cacheDirectory = process.env["RUNNER_TOOL_CACHE"] || "";
     if (cacheDirectory === "") {
         core.warning("Expected RUNNER_TOOL_CACHE to be defined");
     }
     return cacheDirectory;
-}
-
-function getExtractFn(assetName: any) {
-    if (SUPPORTED_TAR_EXTENSIONS.some(ext => assetName.endsWith(ext))) {
-        return tc.extractTar;
-    } else if (assetName.endsWith(".zip")) {
-        return tc.extractZip;
-    } else {
-        return undefined;
-    }
-}
-
-function getExtractFlags(assetName: any) {
-    if (assetName.endsWith("tar.xz")) {
-        return "xJ";
-    } else if (assetName.endsWith("tar.bz2")) {
-        return "xj";
-    } else {
-        return undefined;
-    }
 }
 
 run();
