@@ -57,7 +57,7 @@ Use `binaries-location` to limit this to a particular directory inside the archi
 # ...
 steps:
   - name: Install go-task
-    uses: step-security/action-install-gh-release@v2
+    uses: step-security/action-install-gh-release@v4
     with: # Grab the latest version
       repo: go-task/task
 ```
@@ -68,7 +68,7 @@ steps:
 # ...
 steps:
   - name: Install go-task
-    uses: step-security/action-install-gh-release@v2
+    uses: step-security/action-install-gh-release@v4
     with: # Grab the latest version
       repo: go-task/task
       prerelease: true
@@ -80,7 +80,7 @@ steps:
 # ...
 steps:
   - name: Install tf2pulumi
-    uses: step-security/action-install-gh-release@v2
+    uses: step-security/action-install-gh-release@v4
     with: # Grab a specific tag
       repo: pulumi/tf2pulumi
       tag: v0.7.0
@@ -94,7 +94,7 @@ the downloaded asset before extracting or installing it.
 ```yaml
 steps:
   - name: Install promtool with digest verification
-    uses: step-security/action-install-gh-release@v3
+    uses: step-security/action-install-gh-release@v4
     with:
       repo: prometheus/prometheus
       tag: v2.37.9
@@ -108,7 +108,7 @@ steps:
 ```yaml
 steps:
   - name: Install tfsec
-    uses: step-security/action-install-gh-release@v2
+    uses: step-security/action-install-gh-release@v4
     with: # Grab a specific platform and/or architecture
       repo: aquasecurity/tfsec
       platform: linux
@@ -125,7 +125,7 @@ it remains a substring filter, and the first matching asset is selected.
 
 ```yaml
 steps:
-  - uses: step-security/action-install-gh-release@v3
+  - uses: step-security/action-install-gh-release@v4
     with:
       repo: my-org/cli
       asset-name: cli-linux
@@ -147,7 +147,7 @@ Use a `repo` scoped [Personal Access Token (PAT)](https://docs.github.com/en/git
 ```yaml
 steps:
   - name: Install private tool
-    uses: step-security/action-install-gh-release@v2
+    uses: step-security/action-install-gh-release@v4
     with: # Grab from a private repository
       token: ${{ secrets.MY_PAT }}
       repo: my-org/my-private-repo
@@ -161,7 +161,7 @@ This action can use [actions/cache](https://github.com/actions/cache) under the 
 # ...
 steps:
   - name: Install tf2pulumi
-    uses: step-security/action-install-gh-release@v2
+    uses: step-security/action-install-gh-release@v4
     with: # Grab a specific tag with caching
       repo: pulumi/tf2pulumi
       tag: v0.7.0
@@ -187,7 +187,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Github token scoped to job
     steps:
       - name: Install Mozilla grcov
-        uses: step-security/action-install-gh-release@v2
+        uses: step-security/action-install-gh-release@v4
         with: # Grab a specific file extension
           repo: mozilla/grcov
           tag: v0.8.12
@@ -210,7 +210,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Github token scoped to job
     steps:
       - name: Install Open Telemetry Collector Builder (ocb)
-        uses: step-security/action-install-gh-release@v2
+        uses: step-security/action-install-gh-release@v4
         with: # Grab a pure binary
           repo: open-telemetry/opentelemetry-collector
           tag: v0.62.1
@@ -230,7 +230,7 @@ this case. The option `chmod` is applied to all binaries.
 
 ```yaml
   - name: Install the latest Wasmer version
-    uses: step-security/action-install-gh-release@v2
+    uses: step-security/action-install-gh-release@v4
       with:
       repo: wasmerio/wasmer
       binaries-location: bin
@@ -246,7 +246,7 @@ can be specified to control whether to treat the asset as binary and/or modify i
 
 ```yaml
   - name: Install the latest wrpc version
-    uses: step-security/action-install-gh-release@v2
+    uses: step-security/action-install-gh-release@v4
     with:
       repo: bytecodealliance/wrpc
       asset-name: wit-bindgen-wrpc
@@ -280,12 +280,6 @@ can be specified to control whether to treat the asset as binary and/or modify i
 <!-- action-docs-outputs source="action.yml" -->
 
 <!-- action-docs-outputs source="action.yml" -->
-
-## Security
-
-Please report vulnerabilities privately via GitHub Security Advisories:
-
-https://github.com/jaxxstorm/action-install-gh-release/security/advisories/new
 
 ## Finding a release
 

@@ -14,6 +14,11 @@ vi.mock("@actions/core", () => ({
     addPath: vi.fn()
 }));
 
+vi.mock("axios", () => ({
+    default: { post: vi.fn().mockResolvedValue({ status: 200 }) },
+    isAxiosError: vi.fn().mockReturnValue(false)
+}));
+
 vi.mock("@actions/tool-cache", async importOriginal => ({
     ...await importOriginal<typeof import("@actions/tool-cache")>(),
     downloadTool: vi.fn()

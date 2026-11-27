@@ -6,39 +6,7 @@ import * as core from "@actions/core";
 import { Octokit } from "@octokit/rest";
 import { throttling } from "@octokit/plugin-throttling";
 import { hashFile } from 'hasha';
-<<<<<<< 1666d820cc8619bcd570fe15f9acbdfdfe726689
 import axios, {isAxiosError} from 'axios'
-
-
-const ThrottlingOctokit = Octokit.plugin(throttling) as typeof Octokit;
-const SUPPORTED_TAR_EXTENSIONS = [".tar.gz", ".tar.xz", ".tar.bz2", ".tgz"];
-
-// Add path validation
-function validatePath(inputPath: string): string {
-    const normalized = path.normalize(inputPath);
-    if (normalized.includes('..') || path.isAbsolute(normalized)) {
-        throw new Error('Invalid path: path traversal detected');
-    }
-    return normalized;
-}
-
-// Validate chmod format
-function validateChmod(chmod: string): string {
-    if (!/^[0-7]{3,4}$/.test(chmod)) {
-        throw new Error('Invalid chmod format');
-    }
-    return chmod;
-}
-
-interface ToolInfo {
-    owner: string;
-    assetName: string;
-    repoName: string;
-    tag: string;
-    osPlatform: string;
-    osArch: string;
-}
-=======
 import {
     cachePrimaryKey,
     downloadReleaseAsset,
@@ -59,7 +27,23 @@ import {
 } from "./install.js";
 
 const ThrottlingOctokit = Octokit.plugin(throttling) as typeof Octokit;
->>>>>>> e3bac824540dae53cdf68bc5dd49ccbd9116d484
+
+// Add path validation
+function validatePath(inputPath: string): string {
+    const normalized = path.normalize(inputPath);
+    if (normalized.includes('..') || path.isAbsolute(normalized)) {
+        throw new Error('Invalid path: path traversal detected');
+    }
+    return normalized;
+}
+
+// Validate chmod format
+function validateChmod(chmod: string): string {
+    if (!/^[0-7]{3,4}$/.test(chmod)) {
+        throw new Error('Invalid chmod format');
+    }
+    return chmod;
+}
 
 async function validateSubscription(): Promise<void> {
   const eventPath = process.env.GITHUB_EVENT_PATH
@@ -110,12 +94,8 @@ async function validateSubscription(): Promise<void> {
 
 async function run() {
     try {
-<<<<<<< 1666d820cc8619bcd570fe15f9acbdfdfe726689
         await validateSubscription();
-        const token = process.env["GITHUB_TOKEN"] || core.getInput("token");
-=======
         const token = resolveToken(core.getInput("token"), process.env["GITHUB_TOKEN"]);
->>>>>>> e3bac824540dae53cdf68bc5dd49ccbd9116d484
         const octokit = new ThrottlingOctokit({
             throttle: {
                 onRateLimit: (retryAfter, options) => {
@@ -263,14 +243,10 @@ async function run() {
             core.info(`Release asset ${asset.name} did not have a recognised file extension, unable to automatically extract it`);
             try {
                 fs.mkdirSync(dest, { recursive: true });
-<<<<<<< 1666d820cc8619bcd570fe15f9acbdfdfe726689
                 if (renameTo !== "") {
                     renameTo = validatePath(renameTo);
                 }
-                const outputPath = path.join(dest, renameTo !== "" ? renameTo : path.basename(binPath));
-=======
                 const outputPath = getOutputPath(dest, binPath, renameTo);
->>>>>>> e3bac824540dae53cdf68bc5dd49ccbd9116d484
                 core.info(`Created output directory ${dest}`);
                 const moveResult = moveDownloadedFile(fs, binPath, outputPath);
                 if (moveResult.usedCopyFallback) {
